@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>WebXR Hit Test AR</title>
+    <!-- Usamos A-Frame 1.5.0 para mejor soporte WebXR -->
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+
+    <script>
+        // Componente para manejar Hit Test y colocación del modelo
+        AFRAME.registerComponent('ar-hit-test', {
+            init: function () {
+                this.reticle = document.querySelector("#reticle");
+                this.model = document.querySelector("#modelo-traje-entity");
+                this.modelVisible = false;
+
+                // Evento al tocar la pantalla
+                this.el.sceneEl.addEventListener("ar-hit-test-select", (e) => {
+                    // Posicionar el modelo donde está el retículo
+                    this.model.setAttribute("position", this.reticle.getAttribute("position"));
+                    this.model.setAttribute("visible", true);
+                    this.modelVisible = true;
+                });
+            },
+            tick: function () {
+                // El retículo sigue la superficie detectada automáticamente por WebXR
+                // No necesitamos lógica compleja aquí gracias a los componentes nativos de A-Frame ar-hit-test
+            }
+        });
+    </script>
+</head>
+
+<body style="margin: 0; overflow: hidden;">
+    <!-- 
+        WebXR Scene 
+        optionalFeatures: hit-test permite detectar superficies.
+        ar-hit-test es el componente sistema de A-Frame que maneja la lógica de bajo nivel.
+    -->
+    <a-scene webxr="optionalFeatures: hit-test" ar-hit-test="target: #reticle; type: map">
+
+        <a-assets>
+            <a-asset-item id="modelo-traje" src="./10_2_2026.glb"></a-asset-item>
+        </a-assets>
+
+        <!-- Iluminación -->
+        <a-entity light="type: ambient; color: #ffffff; intensity: 0.5"></a-entity>
+        <a-entity light="type: directional; color: #ffffff; intensity: 1.0" position="-1 1 1"></a-entity>
+
+        <!-- 
+            Retículo: Guía visual para el usuario. 
+            Se mueve automáticamente a la superficie detectada.
+            Inicialmente visible para que el usuario sepa dónde apuntar.
+        -->
+        <a-entity id="reticle" ar-hit-test-emitter>
+            <a-ring rotation="-90 0 0" radius-inner="0.1" radius-outer="0.15" color="white"></a-ring>
+            <a-circle rotation="-90 0 0" radius="0.01" color="white"></a-circle>
+        </a-entity>
+
+        <!-- 
+            Modelo 3D 
+            Inicialmente invisible hasta que el usuario toque la pantalla.
+        -->
+        <a-entity id="modelo-traje-entity" gltf-model="#modelo-traje" scale="0.5 0.5 0.5" visible="false">
+        </a-entity>
+
+        <!-- Cámara -->
+        <a-entity camera position="0 1.6 0"></a-entity>
+
+    </a-scene>
+</body>
+
+</html>
