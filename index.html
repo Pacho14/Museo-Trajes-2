@@ -17,36 +17,32 @@
             background: rgba(0, 0, 0, 0.7);
             color: lime;
             font-family: monospace;
-            font-size: 12px;
+            font-size: 14px;
             overflow-y: scroll;
             z-index: 9999;
             pointer-events: none;
             display: none;
-            /* Se mostrará si hay errores o log */
         }
     </style>
 
     <script>
-        // Función simple para mostrar logs en pantalla
         function debugLog(msg) {
             const consoleEl = document.getElementById('debug-console');
             if (consoleEl) {
                 consoleEl.style.display = 'block';
-                consoleEl.innerHTML += `<div>${msg}</div>`;
+                consoleEl.innerHTML += `<div>> ${msg}</div>`;
                 consoleEl.scrollTop = consoleEl.scrollHeight;
             }
             console.log(msg);
         }
 
-        // Catch global errors
         window.addEventListener('error', function (e) {
-            debugLog(`ERROR: ${e.message} at ${e.filename}:${e.lineno}`);
+            debugLog(`ERR: ${e.message}`);
         });
 
-        // Componente que controla el retículo y la detección de superficies
         AFRAME.registerComponent('ar-controller', {
             init: function () {
-                debugLog("AR Controller inicializado");
+                debugLog("AR Controller Init");
                 this.reticle = document.querySelector("#reticle");
                 this.model = document.querySelector("#modelo-traje-entity");
                 this.xrHitTestSource = null;
@@ -55,39 +51,51 @@
 
                 const sceneEl = this.el;
 
-                // Evento cuando entra a modo AR
                 sceneEl.addEventListener('enter-vr', () => {
-                    debugLog("Entrando a VR/AR...");
-                    const session = sceneEl.renderer.xr.getSession();
+                    debugLog("Enter VR/AR Event");
 
-                    if (!session) {
-                        debugLog("ERROR: No se pudo obtener sesión WebXR");
-                        return;
-                    }
-
-                    // Solicitar referencia 'viewer' para hit-test
-                    session.requestReferenceSpace('viewer').then((space) => {
-                        this.viewerSpace = space;
-                        session.requestHitTestSource({ space: this.viewerSpace })
-                            .then((source) => {
-                                this.xrHitTestSource = source;
-                                debugLog("Hit Test Source obtenido");
-                            })
-                            .catch(err => debugLog("Error getting user hit test source: " + err));
-                    }).catch(err => debugLog("Error requesting viewer space: " + err));
-
-                    session.requestReferenceSpace('local').then((space) => {
-                        this.refSpace = space;
-                        debugLog("Local reference space obtenido");
-                    }).catch(err => debugLog("Error requesting local space: " + err));
+                    // Esperamos un momento para asegurar que la sesión WebXR esté activa
+                    setTimeout(() => {
+                        this.startARSession();
+                    }, 500);
                 });
 
-                // Evento cuando sale
                 sceneEl.addEventListener('exit-vr', () => {
-                    debugLog("Saliendo de VR/AR");
+                    debugLog("Exit VR/AR");
                     this.xrHitTestSource = null;
                     this.reticle.setAttribute('visible', 'false');
                 });
+            },
+
+            startARSession: function () {
+                const sceneEl = this.el;
+
+                // Intenta obtener la sesión desde A-Frame o el Renderer
+                const session = sceneEl.xrSession || sceneEl.renderer.xr.getSession();
+
+                if (!session) {
+                    debugLog("ERROR: No session found.");
+                    debugLog("Check: Are you on iPhone Safari? (Use WebXR Viewer)");
+                    debugLog("Check: Are you on Android Chrome?");
+                    return;
+                }
+
+                debugLog("Session FOUND. Requesting ReferenceSpace...");
+
+                session.requestReferenceSpace('viewer').then((space) => {
+                    this.viewerSpace = space;
+                    session.requestHitTestSource({ space: this.viewerSpace })
+                        .then((source) => {
+                            this.xrHitTestSource = source;
+                            debugLog("HitTest Source OK!");
+                        })
+                        .catch(err => debugLog("HitTest Error: " + err));
+                }).catch(err => debugLog("RefSpace Viewer Error: " + err));
+
+                session.requestReferenceSpace('local').then((space) => {
+                    this.refSpace = space;
+                    debugLog("RefSpace Local OK!");
+                }).catch(err => debugLog("RefSpace Local Error: " + err));
             },
 
             tick: function () {
@@ -99,7 +107,6 @@
 
                 const viewerPose = frame.getViewerPose(this.refSpace);
 
-                // Si tenemos fuente de hit test
                 if (this.xrHitTestSource && viewerPose) {
                     const hitTestResults = frame.getHitTestResults(this.xrHitTestSource);
 
@@ -107,29 +114,24 @@
                         const hit = hitTestResults[0];
                         const pose = hit.getPose(this.refSpace);
 
-                        // Hacemos visible el retículo y lo movemos
                         this.reticle.setAttribute('visible', 'true');
                         this.reticle.object3D.position.copy(pose.transform.position);
                         this.reticle.object3D.quaternion.copy(pose.transform.orientation);
                     } else {
-                        // Ocultar si no detecta superficie
                         this.reticle.setAttribute('visible', 'false');
                     }
                 }
             }
         });
 
-        // Componente para colocar el modelo al hacer tap
         AFRAME.registerComponent('tap-place', {
             init: function () {
                 const reticle = document.querySelector("#reticle");
                 const model = document.querySelector("#modelo-traje-entity");
 
-                // Escuchar el evento 'select' (toque en pantalla)
                 this.el.sceneEl.addEventListener("select", (e) => {
                     if (reticle.getAttribute("visible")) {
-                        debugLog("Toque detectado -> Colocando modelo");
-                        // Mover el modelo a donde está el retículo
+                        debugLog("Tap detected! Placing model.");
                         model.setAttribute("position", reticle.getAttribute("position"));
                         model.setAttribute("rotation", reticle.getAttribute("rotation"));
                         model.setAttribute("visible", "true");
@@ -141,7 +143,7 @@
 </head>
 
 <body style="margin: 0; overflow: hidden;">
-    <div id="debug-console">WebXR Debug Console:<br></div>
+    <div id="debug-console">Debug Console Ready...<br></div>
 
     <!-- 
         WebXR Scene 
