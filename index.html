@@ -3,68 +3,168 @@
 
 <head>
     <title>WebXR Hit Test AR</title>
-    <!-- Usamos A-Frame 1.5.0 para mejor soporte WebXR -->
+    <!-- Usamos A-Frame 1.5.0 -->
     <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 
+    <!-- Estilo para la consola de depuración en pantalla -->
+    <style>
+        #debug-console {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            width: 90%;
+            height: 150px;
+            background: rgba(0, 0, 0, 0.7);
+            color: lime;
+            font-family: monospace;
+            font-size: 12px;
+            overflow-y: scroll;
+            z-index: 9999;
+            pointer-events: none;
+            display: none;
+            /* Se mostrará si hay errores o log */
+        }
+    </style>
+
     <script>
-        // Componente para manejar Hit Test y colocación del modelo
-        AFRAME.registerComponent('ar-hit-test', {
+        // Función simple para mostrar logs en pantalla
+        function debugLog(msg) {
+            const consoleEl = document.getElementById('debug-console');
+            if (consoleEl) {
+                consoleEl.style.display = 'block';
+                consoleEl.innerHTML += `<div>${msg}</div>`;
+                consoleEl.scrollTop = consoleEl.scrollHeight;
+            }
+            console.log(msg);
+        }
+
+        // Catch global errors
+        window.addEventListener('error', function (e) {
+            debugLog(`ERROR: ${e.message} at ${e.filename}:${e.lineno}`);
+        });
+
+        // Componente que controla el retículo y la detección de superficies
+        AFRAME.registerComponent('ar-controller', {
             init: function () {
+                debugLog("AR Controller inicializado");
                 this.reticle = document.querySelector("#reticle");
                 this.model = document.querySelector("#modelo-traje-entity");
-                this.modelVisible = false;
+                this.xrHitTestSource = null;
+                this.viewerSpace = null;
+                this.refSpace = null;
 
-                // Evento al tocar la pantalla
-                this.el.sceneEl.addEventListener("ar-hit-test-select", (e) => {
-                    // Posicionar el modelo donde está el retículo
-                    this.model.setAttribute("position", this.reticle.getAttribute("position"));
-                    this.model.setAttribute("visible", true);
-                    this.modelVisible = true;
+                const sceneEl = this.el;
+
+                // Evento cuando entra a modo AR
+                sceneEl.addEventListener('enter-vr', () => {
+                    debugLog("Entrando a VR/AR...");
+                    const session = sceneEl.renderer.xr.getSession();
+
+                    if (!session) {
+                        debugLog("ERROR: No se pudo obtener sesión WebXR");
+                        return;
+                    }
+
+                    // Solicitar referencia 'viewer' para hit-test
+                    session.requestReferenceSpace('viewer').then((space) => {
+                        this.viewerSpace = space;
+                        session.requestHitTestSource({ space: this.viewerSpace })
+                            .then((source) => {
+                                this.xrHitTestSource = source;
+                                debugLog("Hit Test Source obtenido");
+                            })
+                            .catch(err => debugLog("Error getting user hit test source: " + err));
+                    }).catch(err => debugLog("Error requesting viewer space: " + err));
+
+                    session.requestReferenceSpace('local').then((space) => {
+                        this.refSpace = space;
+                        debugLog("Local reference space obtenido");
+                    }).catch(err => debugLog("Error requesting local space: " + err));
+                });
+
+                // Evento cuando sale
+                sceneEl.addEventListener('exit-vr', () => {
+                    debugLog("Saliendo de VR/AR");
+                    this.xrHitTestSource = null;
+                    this.reticle.setAttribute('visible', 'false');
                 });
             },
+
             tick: function () {
-                // El retículo sigue la superficie detectada automáticamente por WebXR
-                // No necesitamos lógica compleja aquí gracias a los componentes nativos de A-Frame ar-hit-test
+                const sceneEl = this.el;
+                if (!sceneEl.is('ar-mode')) return;
+
+                const frame = sceneEl.frame;
+                if (!frame) return;
+
+                const viewerPose = frame.getViewerPose(this.refSpace);
+
+                // Si tenemos fuente de hit test
+                if (this.xrHitTestSource && viewerPose) {
+                    const hitTestResults = frame.getHitTestResults(this.xrHitTestSource);
+
+                    if (hitTestResults.length > 0) {
+                        const hit = hitTestResults[0];
+                        const pose = hit.getPose(this.refSpace);
+
+                        // Hacemos visible el retículo y lo movemos
+                        this.reticle.setAttribute('visible', 'true');
+                        this.reticle.object3D.position.copy(pose.transform.position);
+                        this.reticle.object3D.quaternion.copy(pose.transform.orientation);
+                    } else {
+                        // Ocultar si no detecta superficie
+                        this.reticle.setAttribute('visible', 'false');
+                    }
+                }
+            }
+        });
+
+        // Componente para colocar el modelo al hacer tap
+        AFRAME.registerComponent('tap-place', {
+            init: function () {
+                const reticle = document.querySelector("#reticle");
+                const model = document.querySelector("#modelo-traje-entity");
+
+                // Escuchar el evento 'select' (toque en pantalla)
+                this.el.sceneEl.addEventListener("select", (e) => {
+                    if (reticle.getAttribute("visible")) {
+                        debugLog("Toque detectado -> Colocando modelo");
+                        // Mover el modelo a donde está el retículo
+                        model.setAttribute("position", reticle.getAttribute("position"));
+                        model.setAttribute("rotation", reticle.getAttribute("rotation"));
+                        model.setAttribute("visible", "true");
+                    }
+                });
             }
         });
     </script>
 </head>
 
 <body style="margin: 0; overflow: hidden;">
+    <div id="debug-console">WebXR Debug Console:<br></div>
+
     <!-- 
         WebXR Scene 
         optionalFeatures: hit-test permite detectar superficies.
-        ar-hit-test es el componente sistema de A-Frame que maneja la lógica de bajo nivel.
     -->
-    <a-scene webxr="optionalFeatures: hit-test" ar-hit-test="target: #reticle; type: map">
+    <a-scene webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: #debug-console" ar-controller tap-place>
 
         <a-assets>
-            <a-asset-item id="modelo-traje" src="./10_2_2026.glb"></a-asset-item>
+            <a-asset-item id="modelo-glb" src="./10_2_2026.glb"></a-asset-item>
         </a-assets>
 
-        <!-- Iluminación -->
-        <a-entity light="type: ambient; color: #ffffff; intensity: 0.5"></a-entity>
-        <a-entity light="type: directional; color: #ffffff; intensity: 1.0" position="-1 1 1"></a-entity>
+        <a-light type="directional" intensity="1" position="-1 1 2"></a-light>
+        <a-light type="ambient" intensity="0.5"></a-light>
 
-        <!-- 
-            Retículo: Guía visual para el usuario. 
-            Se mueve automáticamente a la superficie detectada.
-            Inicialmente visible para que el usuario sepa dónde apuntar.
-        -->
-        <a-entity id="reticle" ar-hit-test-emitter>
-            <a-ring rotation="-90 0 0" radius-inner="0.1" radius-outer="0.15" color="white"></a-ring>
-            <a-circle rotation="-90 0 0" radius="0.01" color="white"></a-circle>
+        <!-- El retículo: guía visual (anillo verde) -->
+        <a-entity id="reticle" visible="false">
+            <a-ring rotation="-90 0 0" radius-inner="0.1" radius-outer="0.15" color="#00FF00"></a-ring>
+            <a-circle rotation="-90 0 0" radius="0.02" color="#00FF00"></a-circle>
         </a-entity>
 
-        <!-- 
-            Modelo 3D 
-            Inicialmente invisible hasta que el usuario toque la pantalla.
-        -->
-        <a-entity id="modelo-traje-entity" gltf-model="#modelo-traje" scale="0.5 0.5 0.5" visible="false">
+        <!-- El modelo empieza invisible -->
+        <a-entity id="modelo-traje-entity" gltf-model="#modelo-glb" scale="0.5 0.5 0.5" visible="false">
         </a-entity>
-
-        <!-- Cámara -->
-        <a-entity camera position="0 1.6 0"></a-entity>
 
     </a-scene>
 </body>
