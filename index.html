@@ -1,195 +1,90 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 
 <head>
-    <title>WebXR Hit Test AR</title>
-    <!-- Usamos A-Frame 1.5.0 -->
-    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Museo Trajes RA - Model Viewer</title>
 
-    <!-- Estilo para la consola de depuración en pantalla -->
+    <!-- Importar el componente model-viewer -->
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+
     <style>
-        #debug-console {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            width: 90%;
-            height: 150px;
-            background: rgba(0, 0, 0, 0.7);
-            color: lime;
-            font-family: monospace;
-            font-size: 14px;
-            overflow-y: scroll;
-            z-index: 9999;
-            pointer-events: none;
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #f0f0f0;
+            font-family: sans-serif;
+        }
+
+        model-viewer {
+            width: 100%;
+            height: 100%;
+            background-color: #404040;
+        }
+
+        /* Botón personalizado para activar AR */
+        .ar-button {
+            background-color: white;
+            border-radius: 4px;
+            border: none;
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            padding: 12px 24px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
+            display: none;
+            /* Se oculta por defecto */
+        }
+
+        /* model-viewer lo muestra automáticamente cuando AR es soportado */
+        model-viewer[ar-status="session-started"]>.ar-button {
             display: none;
         }
     </style>
+</head>
+
+<body>
+
+    <!-- 
+        Configuración de Model Viewer para AR:
+        - src: Ruta al modelo
+        - ar: Activa modo AR
+        - ar-modes: 
+            1. 'webxr': Android nativo (si disponible)
+            2. 'scene-viewer': Android alternativo
+            3. 'quick-look': iOS nativo (iPhone/iPad)
+        - camera-controls: Permite rotar/zoom con el dedo
+        - auto-rotate: El modelo gira solo (opcional)
+        - shadow-intensity: Sombras en el suelo
+    -->
+    <model-viewer src="./10_2_2026.glb" poster="https://modelviewer.dev/assets/poster-astronaut.png"
+        alt="Un modelo 3D de traje de museo" shadow-intensity="1" camera-controls auto-rotate ar
+        ar-modes="webxr scene-viewer quick-look" reveal="auto">
+
+        <button slot="ar-button" class="ar-button">
+            👋 Ver en tu espacio
+        </button>
+
+        <div id="error" class="hide">AR no está soportado en este dispositivo</div>
+    </model-viewer>
 
     <script>
-        // Función simple para mostrar logs en pantalla
-        function debugLog(msg) {
-            const consoleEl = document.getElementById('debug-console');
-            if (consoleEl) {
-                consoleEl.style.display = 'block';
-                consoleEl.innerHTML += `<div>> ${msg}</div>`;
-                consoleEl.scrollTop = consoleEl.scrollHeight;
-            }
-            console.log(msg);
-        }
+        const modelViewer = document.querySelector('model-viewer');
 
-        window.addEventListener('error', function (e) {
-            debugLog(`ERR: ${e.message}`);
-        });
-
-        window.onload = function () {
-            debugLog("Page Loaded");
-            if (window.isSecureContext) {
-                debugLog("Secure Context: YES (HTTPS/Localhost)");
-            } else {
-                debugLog("Secure Context: NO! WebXR needs HTTPS");
-            }
-
-            if ('xr' in navigator) {
-                debugLog("navigator.xr exists");
-                navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
-                    debugLog("AR Session Supported: " + supported);
-                    if (!supported) {
-                        debugLog("HINT: Try Chrome on Android.");
-                        debugLog("HINT: iOS Safari needs WebXR Viewer app.");
-                    }
-                }).catch(err => debugLog("Check Error: " + err));
-            } else {
-                debugLog("navigator.xr MISSING. Browser not compatible.");
-            }
-        };
-
-        AFRAME.registerComponent('ar-controller', {
-            init: function () {
-                debugLog("AR Controller Init");
-                this.reticle = document.querySelector("#reticle");
-                this.model = document.querySelector("#modelo-traje-entity");
-                this.xrHitTestSource = null;
-                this.viewerSpace = null;
-                this.refSpace = null;
-
-                const sceneEl = this.el;
-
-                sceneEl.addEventListener('enter-vr', () => {
-                    debugLog("Enter VR/AR Event");
-
-                    // Esperamos un momento para asegurar que la sesión WebXR esté activa
-                    setTimeout(() => {
-                        this.startARSession();
-                    }, 500);
-                });
-
-                sceneEl.addEventListener('exit-vr', () => {
-                    debugLog("Exit VR/AR");
-                    this.xrHitTestSource = null;
-                    this.reticle.setAttribute('visible', 'false');
-                });
-            },
-
-            startARSession: function () {
-                const sceneEl = this.el;
-
-                // Intenta obtener la sesión desde A-Frame o el Renderer
-                const session = sceneEl.xrSession || sceneEl.renderer.xr.getSession();
-
-                if (!session) {
-                    debugLog("ERROR: No session found after enter-vr.");
-                    return;
-                }
-
-                debugLog("Session FOUND. Requesting ReferenceSpace...");
-
-                session.requestReferenceSpace('viewer').then((space) => {
-                    this.viewerSpace = space;
-                    session.requestHitTestSource({ space: this.viewerSpace })
-                        .then((source) => {
-                            this.xrHitTestSource = source;
-                            debugLog("HitTest Source OK!");
-                        })
-                        .catch(err => debugLog("HitTest Error: " + err));
-                }).catch(err => debugLog("RefSpace Viewer Error: " + err));
-
-                session.requestReferenceSpace('local').then((space) => {
-                    this.refSpace = space;
-                    debugLog("RefSpace Local OK!");
-                }).catch(err => debugLog("RefSpace Local Error: " + err));
-            },
-
-            tick: function () {
-                const sceneEl = this.el;
-                if (!sceneEl.is('ar-mode')) return;
-
-                const frame = sceneEl.frame;
-                if (!frame) return;
-
-                const viewerPose = frame.getViewerPose(this.refSpace);
-
-                if (this.xrHitTestSource && viewerPose) {
-                    const hitTestResults = frame.getHitTestResults(this.xrHitTestSource);
-
-                    if (hitTestResults.length > 0) {
-                        const hit = hitTestResults[0];
-                        const pose = hit.getPose(this.refSpace);
-
-                        this.reticle.setAttribute('visible', 'true');
-                        this.reticle.object3D.position.copy(pose.transform.position);
-                        this.reticle.object3D.quaternion.copy(pose.transform.orientation);
-                    } else {
-                        this.reticle.setAttribute('visible', 'false');
-                    }
-                }
-            }
-        });
-
-        AFRAME.registerComponent('tap-place', {
-            init: function () {
-                const reticle = document.querySelector("#reticle");
-                const model = document.querySelector("#modelo-traje-entity");
-
-                this.el.sceneEl.addEventListener("select", (e) => {
-                    if (reticle.getAttribute("visible")) {
-                        debugLog("Tap detected! Placing model.");
-                        model.setAttribute("position", reticle.getAttribute("position"));
-                        model.setAttribute("rotation", reticle.getAttribute("rotation"));
-                        model.setAttribute("visible", "true");
-                    }
+        modelViewer.addEventListener('ar-status', (event) => {
+            if (event.detail.status === 'failed') {
+                const error = document.querySelector("#error");
+                error.classList.remove('hide');
+                error.addEventListener('transitionend', (event) => {
+                    error.classList.add('hide');
                 });
             }
         });
     </script>
-</head>
-
-<body style="margin: 0; overflow: hidden;">
-    <div id="debug-console">Debug Console Ready...<br></div>
-
-    <!-- 
-        WebXR Scene 
-        optionalFeatures: hit-test permite detectar superficies.
-    -->
-    <a-scene webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: #debug-console" ar-controller tap-place>
-
-        <a-assets>
-            <a-asset-item id="modelo-glb" src="./10_2_2026.glb"></a-asset-item>
-        </a-assets>
-
-        <a-light type="directional" intensity="1" position="-1 1 2"></a-light>
-        <a-light type="ambient" intensity="0.5"></a-light>
-
-        <!-- El retículo: guía visual (anillo verde) -->
-        <a-entity id="reticle" visible="false">
-            <a-ring rotation="-90 0 0" radius-inner="0.1" radius-outer="0.15" color="#00FF00"></a-ring>
-            <a-circle rotation="-90 0 0" radius="0.02" color="#00FF00"></a-circle>
-        </a-entity>
-
-        <!-- El modelo empieza invisible -->
-        <a-entity id="modelo-traje-entity" gltf-model="#modelo-glb" scale="0.5 0.5 0.5" visible="false">
-        </a-entity>
-
-    </a-scene>
 </body>
 
 </html>
