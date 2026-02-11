@@ -26,6 +26,7 @@
     </style>
 
     <script>
+        // Función simple para mostrar logs en pantalla
         function debugLog(msg) {
             const consoleEl = document.getElementById('debug-console');
             if (consoleEl) {
@@ -39,6 +40,28 @@
         window.addEventListener('error', function (e) {
             debugLog(`ERR: ${e.message}`);
         });
+
+        window.onload = function () {
+            debugLog("Page Loaded");
+            if (window.isSecureContext) {
+                debugLog("Secure Context: YES (HTTPS/Localhost)");
+            } else {
+                debugLog("Secure Context: NO! WebXR needs HTTPS");
+            }
+
+            if ('xr' in navigator) {
+                debugLog("navigator.xr exists");
+                navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
+                    debugLog("AR Session Supported: " + supported);
+                    if (!supported) {
+                        debugLog("HINT: Try Chrome on Android.");
+                        debugLog("HINT: iOS Safari needs WebXR Viewer app.");
+                    }
+                }).catch(err => debugLog("Check Error: " + err));
+            } else {
+                debugLog("navigator.xr MISSING. Browser not compatible.");
+            }
+        };
 
         AFRAME.registerComponent('ar-controller', {
             init: function () {
@@ -74,9 +97,7 @@
                 const session = sceneEl.xrSession || sceneEl.renderer.xr.getSession();
 
                 if (!session) {
-                    debugLog("ERROR: No session found.");
-                    debugLog("Check: Are you on iPhone Safari? (Use WebXR Viewer)");
-                    debugLog("Check: Are you on Android Chrome?");
+                    debugLog("ERROR: No session found after enter-vr.");
                     return;
                 }
 
